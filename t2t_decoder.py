@@ -14,6 +14,7 @@ from tensor2tensor.utils import registry
 flags = tf.flags
 FLAGS = flags.FLAGS
 
+
 @registry.register_hparams
 def transformer_tall9():
   hparams = transformer.transformer_big()
@@ -29,6 +30,42 @@ def transformer_tall_18_18():
   hparams = transformer_tall9()
   hparams.num_encoder_layers = 18
   hparams.num_decoder_layers = 18
+  return hparams
+
+
+@registry.register_model
+class Transformerextratokentodecoderv2(transformer.Transformer):
+
+  def encode(self, *args, **kwargs):
+    encoder_output, encoder_decoder_attention_bias = super(
+        Transformerextratokentodecoderv2, self).encode(*args, **kwargs)
+    hparams = self._hparams
+    
+    batch_size = encoder_output.shape[0]
+    hidden_dim = int(encoder_output.shape[-1])
+    
+    num_extras = hparams.extra_tokens
+    extra_tokens = tf.get_variable(
+        'extra_tokens', [1, num_extras, hidden_dim],
+        initializer=tf.random_normal_initializer(0.0, hidden_dim**-0.5))
+    
+    extra_tokens = tf.tile(
+        extra_tokens, [batch_size, 1, 1], axis=0)  # [batch, num_extras, hidden_dim]
+    encoder_output = tf.concat(
+        [extra_tokens, encoder_output], axis=1)  # [batch, num_extras+len, hidden_dim]
+
+    encoder_decoder_attention_bias = tf.pad(
+        encoder_decoder_attention_bias,
+        [[0, 0], [num_extras, 0]],
+        constant_values=1.0,
+    )
+    return encoder_output, encoder_decoder_attention_bias
+
+
+@registry.register_hparams
+def transformer_tall9_extra_tokens():
+  hparams = transformer_tall9()
+  hparams.add_hparam("extra_tokens", FLAGS.extra_tokens)
   return hparams
 
 
